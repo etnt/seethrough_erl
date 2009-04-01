@@ -41,15 +41,25 @@
 
 -module(seethrough).
 
--include("xmerl.hrl").
+-include_lib("xmerl/include/xmerl.hrl").
 -export([render/2, render/3,
          compile/1, exec/2,
          apply_template/2, apply_template/3,
          get_attr_value/2,
          lookup/3]).
 
-%-define(DEBUG(Message, Args), io:format("~s~n", [io_lib:format(Message, Args)])).
--define(DEBUG(Message, Args), no_op).
+-define(DEBUG(Message, Args), 
+        io:format("~p(~p): ~s~n", [?MODULE,?LINE,io_lib:format(Message, Args)])).
+%%-define(DEBUG(Message, Args), no_op).
+
+-define(namespace, 'http://dev.tornkvist.org/seethrough').
+
+-record(x, {
+          ns=?namespace,
+          xns=""
+         }).
+ 
+
 
 %%%-------------------------------------------------------------------
 %%% Sample environment
@@ -168,10 +178,59 @@ compile(Node) ->
 %%   My name is <span class="font-weight: bold;">Jim</span>.
 %%--------------------------------------------------------------------
 
+-define(xe, #xmlElement).
+-define(xa, #xmlAttribute).
+-define(xt, #xmlText).
+-define(xn, #xmlNamespace).
+
+
+c(Node, Attrs, X0) ->
+    #x{xns=N} = X = set_ns(Node, X0),
+    {A,As} = get_attr(N, Node?xe.attributes, []),
+    case A of
+        ?xa{namespace = {N, "content"},
+            value = VarName} ->
+            ?DEBUG("~s:content VarName=~p~n", [N,VarName]),
+            fun(Env) ->
+                    ?DEBUG("Expanding ~p:content", [N]),
+            
+                    VarValue = lookup(first, VarName, Env),
+                    Fun = fun(_) ->
+                                  Node#xmlElement{content = [normalize_value(VarValue)],
+                                                  attributes = As}
+                          end,
+                    exec(Fun, Env)
+            end;
+        _ ->
+            ok
+    end.
+
+            
+set_ns(?xe{namespace = ?xn{default = D, nodes = N}}, X) ->
+    ?DEBUG("set_ns: Xns=~p, N=~p~n", [catch get_key(X#x.ns,N),N]),
+    try X#x{xns=get_key(X#x.ns,N)}
+    catch _:_ -> 
+            try X#x{xns=get_key(X#x.ns,D)}
+            catch _:_ -> X
+            end
+    end.
+        
+get_key(V,[{K,V}|_]) -> K;
+get_key(V,[_|T])     -> get_key(V,T).
+
+get_attr(N, [?xa{namespace={N,_}}=A|T], Acc) -> {A, lists:reverse(Acc)++T};
+get_attr(N, [H|T], Acc)                      -> get_attr(N,T,[H|Acc]);
+get_attr(_,[],Acc)                           -> {[],lists:reverse(Acc)}.
+    
+
+compile(Node, Attrs) ->
+    c(Node, Attrs, #x{});
+
 compile(Node = #xmlElement{attributes =
                          [#xmlAttribute{name = 'e:content',
                                         value = VarName} | Rest]},
         Attributes) ->
+    ?DEBUG("e:content Node=~p", [Node]),
     fun(Env) ->
             ?DEBUG("Expanding e:content", []),
             

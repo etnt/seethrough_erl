@@ -1,6 +1,6 @@
 -module(seethrough_test).
 
--include("xmerl.hrl").
+-include_lib("xmerl/include/xmerl.hrl").
 -compile([export_all]).
 
 
@@ -26,8 +26,8 @@ run() ->
 %%%-------------------------------------------------------------------
 
 test_content() ->
-    X = seethrough:apply_template({string, "<title e:content=\"title\"/>"}, [{title, "title"}]),
-    "<title>title</title>" = stringify(X).
+    X = seethrough:apply_template({string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" n:content=\"title\"/>"}, [{title, "hello"}]),
+    "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">hello</title>" = stringify(X).
 
 test_replace() ->
     X = seethrough:apply_template({string, "<span e:replace=\"subtitle\"/>"}, [{subtitle, "subtitle"}]),
