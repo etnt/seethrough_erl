@@ -29,6 +29,17 @@ test_content() ->
     X = seethrough:apply_template({string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" n:content=\"title\"/>"}, [{title, "hello"}]),
     "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">hello</title>" = stringify(X).
 
+foo(_) -> "FOO".
+bar(_) -> "BAR".
+    
+test_content2() ->
+    X = seethrough:apply_template({string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" n:content=\"title/bar\"/>"}, [{title, "hello"},{page,?MODULE}]),
+    "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">BAR</title>" = stringify(X).
+
+test_content3() ->
+    X = seethrough:apply_template({string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" n:content=\"title/foo/seethrough_test\"/>"}, [{title, "hello"}]),
+    "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">FOO</title>" = stringify(X).
+
 test_replace() ->
     X = seethrough:apply_template({string, "<span e:replace=\"subtitle\"/>"}, [{subtitle, "subtitle"}]),
     "subtitle" = stringify(X).

@@ -130,6 +130,7 @@ apply_template(Tree, Env) ->
 
 apply_template({string, String}, Env, Handlers) ->
     {#xmlElement{} = Tree, _} = xmerl_scan:string(String),
+    ?DEBUG("THE COMPLETE TREE: ~p~n",[Tree]),
     apply_template(Tree, Env, Handlers); 
 apply_template({file, File}, Env, Handlers) ->
     {#xmlElement{} = Tree, _} = xmerl_scan:file(File),
@@ -178,26 +179,142 @@ compile(Node) ->
 %%   My name is <span class="font-weight: bold;">Jim</span>.
 %%--------------------------------------------------------------------
 
+%% I hate long record names...
 -define(xe, #xmlElement).
 -define(xa, #xmlAttribute).
 -define(xt, #xmlText).
 -define(xn, #xmlNamespace).
 
+%% Attribute analysis result
+-record(za, {op, val, pos}).
 
+%% Attribute value analysis result
+-record(zv, {op, var, producer}).
+          
+
+e1(T) when is_tuple(T) -> element(1,T).
+
+filter_xa_ns(N,L) ->
+    lists:keysort(?xa.namespace, [E || E <- L, e1(E?xa.namespace) == N]).
+
+try_foldf(Fs,InitAcc) -> 
+    try
+        foldf(Fs,InitAcc),
+        false
+    catch
+        throw:Res -> {ok,Res}
+    end.
+
+foldf(Fs,InitAcc) ->
+    lists:foldl(fun(F,Acc) -> F(Acc) end, InitAcc, Fs).
+
+
+analyze_attributes(N,L) ->
+    Ls = filter_xa_ns(N,L),
+    ?DEBUG("Attributes=~p~n", [Ls]),
+    Res = try_foldf([za_content(N,L)
+                    ], #za{}),
+    ?DEBUG("Attribute analysis=~p~n", [Res]),
+    Res.
+    
+
+-define(z(N,C,Pos,V), ?xa{namespace={N,C},pos=P,value=V}).
+
+%%% ------------------------------------
+%%% Analyse the 'content' attribute
+%%%
+za_content(N,L) -> fun(Z) -> za_content(N,L,Z) end.
+                           
+za_content(N, [?z(N,"content",P,V)|T], Z) ->
+    Va = analyze_value(V),
+    za_content(N,T,Z#za{op = content, val = Va, pos = P});
+za_content(N, [_|T], Z) -> 
+    za_content(N, T, Z);
+za_content(_, [], #za{op = content}=Z) -> 
+    throw(Z);
+za_content(_, [], _) -> 
+    false.
+
+
+%%% ------------------------------------
+%%% Analyse the attribute value
+%%%
+analyze_value(V) when is_list(V) ->
+    case string:tokens(V," ") of  
+        [Var,Producer] ->
+            %% Example: "href item/getId"
+            #zv{producer = P} = analyze_value_producer(Producer),
+            V = analyze_value_var(Var),
+            #zv{op = set, var = V, producer = P};
+        _ ->
+            analyze_value_producer(V)
+    end.
+
+analyze_value_var(Var) -> Var.  % FIXME ?
+    
+%%% ------------------------------------
+%%% Analyse how the attribute value should be produced.
+%%%
+analyze_value_producer(V) when is_list(V) ->
+    %% Example: "item/getId"
+    case string:tokens(V,"/") of
+        [Var] -> 
+            #zv{op = get, 
+                var = Var, 
+                producer = get_env_val(Var)
+               };
+        [Var,Fun] ->
+            #zv{op = get, 
+                var = Var, 
+                producer = get_page_val(Var,Fun)
+               };
+        [Var,Fun,Mod] ->
+            #zv{op = get, 
+                var = Var, 
+                producer = get_mod_val(Var,Fun,Mod)
+               }
+    
+            %% FIXME error handling here!!
+    
+    end.
+
+get_env_val(VarName) ->
+    fun(Env) -> lookup(first, VarName, Env) end.
+            
+get_page_val(VarName, Fun) ->
+    fun(Env) -> 
+            Val  = lookup(first, VarName, Env),
+            Page = lookup(first, page, Env),
+            (l2a(Page)):(l2a(Fun))(Val)
+    end.
+            
+get_mod_val(VarName, Fun, Mod) ->
+    fun(Env) -> 
+            Val  = lookup(first, VarName, Env),
+            (l2a(Mod)):(l2a(Fun))(Val)
+    end.
+            
+l2a(L) when is_list(L) -> list_to_atom(L);
+l2a(A) when is_atom(A) -> A.
+
+
+
+%%% ------------------------------------
+%%% Compile the XML node
+%%%
 c(Node, Attrs, X0) ->
     #x{xns=N} = X = set_ns(Node, X0),
     {A,As} = get_attr(N, Node?xe.attributes, []),
-    case A of
-        ?xa{namespace = {N, "content"},
-            value = VarName} ->
-            ?DEBUG("~s:content VarName=~p~n", [N,VarName]),
+    Res = analyze_attributes(N,Node?xe.attributes),
+    case Res of
+        {ok, #za{op  = content, val = Zv}} ->
             fun(Env) ->
                     ?DEBUG("Expanding ~p:content", [N]),
             
-                    VarValue = lookup(first, VarName, Env),
+                    VarValue = (Zv#zv.producer)(Env),  % FIXME handle op=set !
                     Fun = fun(_) ->
-                                  Node#xmlElement{content = [normalize_value(VarValue)],
-                                                  attributes = As}
+                                  Node?xe{content = [normalize_value(VarValue)],
+                                          attributes = As}
                           end,
                     exec(Fun, Env)
             end;
@@ -206,6 +323,9 @@ c(Node, Attrs, X0) ->
     end.
 
             
+%%% ------------------------------------
+%%% Analyse the XML namespace
+%%%
 set_ns(?xe{namespace = ?xn{default = D, nodes = N}}, X) ->
     ?DEBUG("set_ns: Xns=~p, N=~p~n", [catch get_key(X#x.ns,N),N]),
     try X#x{xns=get_key(X#x.ns,N)}
@@ -223,8 +343,11 @@ get_attr(N, [H|T], Acc)                      -> get_attr(N,T,[H|Acc]);
 get_attr(_,[],Acc)                           -> {[],lists:reverse(Acc)}.
     
 
+
+
+
 compile(Node, Attrs) ->
-    c(Node, Attrs, #x{});
+    c(Node, Attrs, #x{});  % Temporary hook into the new code.
 
 compile(Node = #xmlElement{attributes =
                          [#xmlAttribute{name = 'e:content',
@@ -468,7 +591,7 @@ normalize_value(VarValue) when is_record(VarValue, xmlText) ->
     VarValue;
 normalize_value(VarValue) when is_integer(VarValue) ->
     normalize_value(integer_to_list(VarValue));
-normalize_value(VarValue) ->
+normalize_value(VarValue) when is_list(VarValue) ->
     #xmlText{value = VarValue}.
 
 %%---------------------------------------------
