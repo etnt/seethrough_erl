@@ -1,6 +1,7 @@
 -module(seethrough_test).
 
 -include_lib("xmerl/include/xmerl.hrl").
+-include_lib("eunit/include/eunit.hrl").
 -compile([export_all]).
 
 
@@ -25,24 +26,51 @@ run() ->
 %%% Tests
 %%%-------------------------------------------------------------------
 
-test_content() ->
-    X = seethrough:apply_template({string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" n:content=\"title\"/>"}, [{title, "hello"}]),
-    "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">hello</title>" = stringify(X).
+content_test() ->
+    X = seethrough:apply_template(
+          {string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
+           "n:content=\"title\"/>"}, 
+          [{title, "hello"}]),
+    ?assertMatch("<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">hello</title>",
+                 stringify(X)).
 
 foo(_) -> "FOO".
 bar(_) -> "BAR".
     
-test_content2() ->
-    X = seethrough:apply_template({string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" n:content=\"title/bar\"/>"}, [{title, "hello"},{page,?MODULE}]),
-    "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">BAR</title>" = stringify(X).
+content2_test() ->
+    X = seethrough:apply_template(
+          {string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
+           "n:content=\"title/bar\"/>"}, 
+          [{title, "hello"},{page,?MODULE}]),
+    ?assertMatch("<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">BAR</title>",
+                 stringify(X)).
 
-test_content3() ->
-    X = seethrough:apply_template({string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" n:content=\"title/foo/seethrough_test\"/>"}, [{title, "hello"}]),
-    "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">FOO</title>" = stringify(X).
+content3_test() ->
+    X = seethrough:apply_template(
+          {string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
+           "n:content=\"title/foo/seethrough_test\"/>"}, 
+          [{title, "hello"}]),
+    ?assertMatch("<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">FOO</title>",
+                 stringify(X)).
 
-test_replace() ->
-    X = seethrough:apply_template({string, "<span e:replace=\"subtitle\"/>"}, [{subtitle, "subtitle"}]),
-    "subtitle" = stringify(X).
+replace_test() ->
+    X = seethrough:apply_template(
+          {string, "<span xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
+           "n:replace=\"subtitle\"/>"}, 
+          [{subtitle, "subtitle"}]),
+    ?assertMatch("subtitle", stringify(X)).
+
+attribute_test() ->
+    X = seethrough:apply_template(
+          {string, "<h2 xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
+           "style=\"font-weight: normal;\" "
+           "n:attributes=\"style h2_style\">Header 2</h2>"}, 
+          [{h2_style,"font-weight: bold;"}]),
+    ?assertMatch("<h2 style=\"font-weight: bold;\">Header 2</h2>", 
+                 stringify(X)).
+
+
+
 
 test_attr_with_immediate_value() ->
     X = seethrough:apply_template({string, "<h2><e:attr name=\"style\">font-weight: bold;</e:attr></h2>"}, []),

@@ -192,10 +192,12 @@ compile(Node) ->
 -record(zv, {op, var, producer}).
           
 
-e1(T) when is_tuple(T) -> element(1,T).
+e1(T) when is_tuple(T) ->  element(1,T).
 
 filter_xa_ns(N,L) ->
-    lists:keysort(?xa.namespace, [E || E <- L, e1(E?xa.namespace) == N]).
+    lists:keysort(?xa.namespace, [E || E <- L, 
+                                       is_tuple(E?xa.namespace),
+                                       e1(E?xa.namespace) == N]).
 
 try_foldf(Fs,InitAcc) -> 
     try
@@ -212,8 +214,10 @@ foldf(Fs,InitAcc) ->
 analyze_attributes(N,L) ->
     Ls = filter_xa_ns(N,L),
     ?DEBUG("Attributes=~p~n", [Ls]),
-    Res = try_foldf([za_content(N,L)
-                    ], #za{}),
+    Res = foldf([ za_content(N,L)
+                 ,za_replace(N,L)
+                 ,za_attributes(N,L)
+                 ], []),
     ?DEBUG("Attribute analysis=~p~n", [Res]),
     Res.
     
@@ -222,18 +226,20 @@ analyze_attributes(N,L) ->
 
 %%% ------------------------------------
 %%% Analyse the 'content' attribute
+%%% Analyse the 'replace' attribute
+%%% Analyse the 'attributes' attribute
 %%%
-za_content(N,L) -> fun(Z) -> za_content(N,L,Z) end.
+za_content(N,L)    -> fun(Zs) -> za("content",N,L,Zs) end.
+za_replace(N,L)    -> fun(Zs) -> za("replace",N,L,Zs) end.
+za_attributes(N,L) -> fun(Zs) -> za("attributes",N,L,Zs) end.
                            
-za_content(N, [?z(N,"content",P,V)|T], Z) ->
+za(C, N, [?z(N,C,P,V)|T], Zs) ->
     Va = analyze_value(V),
-    za_content(N,T,Z#za{op = content, val = Va, pos = P});
-za_content(N, [_|T], Z) -> 
-    za_content(N, T, Z);
-za_content(_, [], #za{op = content}=Z) -> 
-    throw(Z);
-za_content(_, [], _) -> 
-    false.
+    za(C, N, T, [#za{op=l2a(C),val=Va, pos = P}|Zs]);
+za(C, N, [_|T], Z) -> 
+    za(C, N, T, Z);
+za(_, _, [], Zs) -> 
+    Zs.
 
 
 %%% ------------------------------------
@@ -298,6 +304,16 @@ l2a(L) when is_list(L) -> list_to_atom(L);
 l2a(A) when is_atom(A) -> A.
 
 
+node_apply([#za{op = content, val = Zv}|T], Node, Env) ->
+    VarValue = (Zv#zv.producer)(Env),  % FIXME handle op=set !
+    node_apply(T, Node?xe{content = [normalize_value(VarValue)]}, Env);
+node_apply([#za{op = replace, val = Zv}|T], Node, Env) ->
+    VarValue = (Zv#zv.producer)(Env),  % FIXME handle op=set !
+    normalize_value(VarValue);  % Can't continue here...
+node_apply([], Node, _) ->
+    Node.
+
+
 
 %%% ------------------------------------
 %%% Compile the XML node
@@ -305,21 +321,16 @@ l2a(A) when is_atom(A) -> A.
 c(Node, Attrs, X0) ->
     #x{xns=N} = X = set_ns(Node, X0),
     {A,As} = get_attr(N, Node?xe.attributes, []),
+    ?DEBUG("Attrs ~p~n", [A]),
     Res = analyze_attributes(N,Node?xe.attributes),
-    case Res of
-        {ok, #za{op  = content, val = Zv}} ->
-            fun(Env) ->
-                    ?DEBUG("Expanding ~p:content", [N]),
-            
-                    VarValue = (Zv#zv.producer)(Env),  % FIXME handle op=set !
-                    Fun = fun(_) ->
-                                  Node?xe{content = [normalize_value(VarValue)],
-                                          attributes = As}
-                          end,
-                    exec(Fun, Env)
-            end;
-        _ ->
-            ok
+    ?DEBUG("Analyzed attrs: ~p~n", [Res]),
+    fun(Env) ->
+            Fun = fun(Env2) ->
+                          Q = node_apply(Res, Node?xe{attributes=As}, Env2),
+                          ?DEBUG("node_apply: ~p~n", [Q]),
+                          Q
+                  end,
+            exec(Fun, Env)
     end.
 
             
