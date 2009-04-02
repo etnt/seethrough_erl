@@ -27,48 +27,211 @@ run() ->
 %%%-------------------------------------------------------------------
 
 content_test() ->
-    X = seethrough:apply_template(
-          {string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
-           "n:content=\"title\"/>"}, 
-          [{title, "hello"}]),
-    ?assertMatch("<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">hello</title>",
-                 stringify(X)).
+    ?assertMatch("<p>My name is <span xmlns:n=\"http://dev.hyperstruct.net/seethrough\">Jim</span></p>",
+                 content()).
 
-foo(_) -> "FOO".
-bar(_) -> "BAR".
-    
+content() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<p>My name is <span xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "n:content=\"name\"/></p>"}, 
+        [{name, "Jim"}])).
+
+content9() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<div xmlns=\"http://www.w3.org/1999/xhtml\" "
+         "     xmlns:baz=\"http://baz.tornkvist.org/blaha\" "
+         "     xmlns:n=\"http://dev.hyperstruct.net/seethrough\">"
+         "  <title n:content=\"title\">Title</title>"
+         "</div>"
+        }, 
+        [{title, "hello"}])).
+
+
+%%% --------------------------------------------------------------------
+%%%
 content2_test() ->
-    X = seethrough:apply_template(
-          {string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
-           "n:content=\"title/bar\"/>"}, 
-          [{title, "hello"},{page,?MODULE}]),
-    ?assertMatch("<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">BAR</title>",
-                 stringify(X)).
+    ?assertMatch("<title xmlns:n=\"http://dev.hyperstruct.net/seethrough\">BAR</title>",
+                 content2()).
 
+content2() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<title xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "       n:content=\"title/bar\"/>"}, 
+        [{title, "hello"},{page,?MODULE}])).
+
+foo(_VarName, _Env) -> "FOO".
+bar(_VarName, _Env) -> "BAR".
+    
+%%% --------------------------------------------------------------------
+%%%
 content3_test() ->
-    X = seethrough:apply_template(
-          {string, "<title xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
-           "n:content=\"title/foo/seethrough_test\"/>"}, 
-          [{title, "hello"}]),
-    ?assertMatch("<title xmlns:n=\"http://dev.tornkvist.org/seethrough\">FOO</title>",
-                 stringify(X)).
+    ?assertMatch("<title xmlns:n=\"http://dev.hyperstruct.net/seethrough\">FOO</title>",
+                 content3()).
+content3() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<title xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "       n:content=\"title/foo/seethrough_test\">"
+         "   BAR"
+         "</title>"}, 
+        [{title, "hello"}])).
 
+
+%%% --------------------------------------------------------------------
+%%%
 replace_test() ->
-    X = seethrough:apply_template(
-          {string, "<span xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
-           "n:replace=\"subtitle\"/>"}, 
-          [{subtitle, "subtitle"}]),
-    ?assertMatch("subtitle", stringify(X)).
+    ?assertMatch("subtitle", replace()).
 
+replace() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<span xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "      n:replace=\"subtitle\"/>"}, 
+        [{subtitle, "subtitle"}])).
+
+
+%%% --------------------------------------------------------------------
+%%%
+replace2_test() ->
+    ?assertMatch("I AM REPLACED!", replace2()).
+
+replace2() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<span xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "      n:replace=\"subtitle\">"
+         "   REPLACE ME"
+         "</span>"}, 
+        [{subtitle, "I AM REPLACED!"}])).
+
+%%% --------------------------------------------------------------------
+%%%
+replace3_test() ->
+    ?assertMatch("BAR", replace3()).
+
+replace3() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<span xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "      n:replace=\"goofy/bar\">"
+         "   REPLACE ME"
+         "</span>"}, 
+        [{page, ?MODULE}])).
+
+%%% --------------------------------------------------------------------
+%%%
+condition_test() ->
+    ?assertMatch("", condition()).
+
+condition() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<div xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "     n:condition=\"error\">"
+         "   Boom!"
+         "</div>"}, 
+        [{error, false}])).
+
+
+%%% --------------------------------------------------------------------
+%%%
+condition2_test() ->
+    ?assertMatch("", condition2()).
+
+condition2() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<div xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "     n:condition=\"error\">"
+         "   Boom!"
+         "</div>"}, 
+        [])).
+
+%%% --------------------------------------------------------------------
+%%%
+condition3_test() ->
+    ?assertMatch("<div xmlns:n=\"http://dev.hyperstruct.net/seethrough\">Boom!</div>", 
+                 condition3()).
+
+condition3() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<div xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "     n:condition=\"error\">"
+         "Boom!"
+         "</div>"}, 
+        [{error, true}])).
+
+
+%%% --------------------------------------------------------------------
+%%%
+condition4_test() ->
+    ?assertMatch("<div xmlns:n=\"http://dev.hyperstruct.net/seethrough\">Boom!</div>", 
+                 condition4()).
+
+boom(_VarName, _Env) -> true.
+
+condition4() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<div xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+         "     n:condition=\"_/boom\">"
+         "Boom!"
+         "</div>"}, 
+        [{page, ?MODULE}])).
+
+
+%%% --------------------------------------------------------------------
+%%%
 attribute_test() ->
-    X = seethrough:apply_template(
-          {string, "<h2 xmlns:n=\"http://dev.tornkvist.org/seethrough\" "
-           "style=\"font-weight: normal;\" "
-           "n:attributes=\"style h2_style\">Header 2</h2>"}, 
-          [{h2_style,"font-weight: bold;"}]),
-    ?assertMatch("<h2 style=\"font-weight: bold;\">Header 2</h2>", 
-                 stringify(X)).
+    ?assertMatch("<h2 xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+                 "style=\"font-weight: bold;\" class=\"BAR\">  Header 2</h2>",
+                 attribute()).
 
+attribute() ->
+    stringify(
+      seethrough:apply_template(
+        {string,attribute_string()},
+        [{h2_style,"font-weight: bold;"},{page,?MODULE}])).
+
+attribute_string() ->
+    "<h2 xmlns:n=\"http://dev.hyperstruct.net/seethrough\" "
+        "style=\"font-weight: normal;\" "
+        "class=\"FOO\">"
+        "<n:attr name=\"class\">class/bar</n:attr> "
+        "<n:attr name=\"style\">h2_style</n:attr> "
+        "Header 2"
+        "</h2>".
+
+
+
+nitrogen() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<div xmlns=\"http://www.w3.org/1999/xhtml\" "
+         "     xmlns:e=\"http://dev.hyperstruct.net/seethrough\" "
+         "     xmlns:n=\"http://dev.tornkvist.org/seethrough/nitrogen\">"
+         "  <n:label text=\"Name\"/>"
+         "</div>"}, 
+        [],
+        [{'http://dev.tornkvist.org/seethrough/nitrogen', 
+          seethrough_nitrogen}]
+       )).
 
 
 
@@ -80,14 +243,6 @@ test_attr_with_computed_content() ->
     X = seethrough:apply_template({string, "<h2><e:attr name=\"align\"><span e:replace=\"alignment\"/></e:attr></h2>"},
                 [{alignment, "center"}]),
     "<h2 align=\"center\"/>" = stringify(X).
-
-test_condition() ->
-    X = seethrough:apply_template({string, "<div e:condition=\"error\">Boom!</div>"}, [{error, false}]),
-    "" = stringify(X),
-    X1 = seethrough:apply_template({string, "<div e:condition=\"error\">Boom!</div>"}, []),
-    "" = stringify(X1),
-    X2 = seethrough:apply_template({string, "<div e:condition=\"error\">Boom!</div>"}, [{error, true}]),
-    "<div>Boom!</div>" = stringify(X2).
 
 test_repeat() ->
     S = "<select><option e:repeat=\"member\">" ++

@@ -48,17 +48,12 @@
          get_attr_value/2,
          lookup/3]).
 
--define(DEBUG(Message, Args), 
+-define(xdbg(Message, Args), 
         io:format("~p(~p): ~s~n", [?MODULE,?LINE,io_lib:format(Message, Args)])).
-%%-define(DEBUG(Message, Args), no_op).
+%%-define(xdbg(Message, Args), no_op).
 
--define(namespace, 'http://dev.tornkvist.org/seethrough').
+-define(namespace, 'http://dev.hyperstruct.net/seethrough').
 
--record(x, {
-          ns=?namespace,
-          xns=""
-         }).
- 
 
 
 %%%-------------------------------------------------------------------
@@ -130,7 +125,7 @@ apply_template(Tree, Env) ->
 
 apply_template({string, String}, Env, Handlers) ->
     {#xmlElement{} = Tree, _} = xmerl_scan:string(String),
-    ?DEBUG("THE COMPLETE TREE: ~p~n",[Tree]),
+    ?xdbg("THE COMPLETE TREE: ~p~n",[Tree]),
     apply_template(Tree, Env, Handlers); 
 apply_template({file, File}, Env, Handlers) ->
     {#xmlElement{} = Tree, _} = xmerl_scan:file(File),
@@ -166,7 +161,10 @@ compile(Node) when is_record(Node, xmlElement) ->
 compile(Node) ->
     fun(_) -> Node end.
 
+
 %%--------------------------------------------------------------------
+%% @doc
+%%
 %% Transform an element with a "e:content" attribute to an equal
 %% element having the value looked up in the environment as content.
 %%
@@ -177,206 +175,54 @@ compile(Node) ->
 %% If in the environment name" is "Jim", it will be transformed to:
 %%
 %%   My name is <span class="font-weight: bold;">Jim</span>.
+%%
+%%
+%% Replace the content of an element with a "e:content" attribute 
+%% with value accoding to the TAL syntax,
+%%
+%% For example:
+%%
+%%   <title xmlns:n="http://dev.tornkvist.org/seethrough" 
+%%          n:content="title/foo/seethrough_test">BAR</title>
+%% 
+%% If function seethrough_test:foo/2 returns "Jim", the result
+%% will be
+%%
+%%   <title>Jim</title>
+%%
+%% @end
 %%--------------------------------------------------------------------
 
-%% I hate long record names...
--define(xe, #xmlElement).
--define(xa, #xmlAttribute).
--define(xt, #xmlText).
--define(xn, #xmlNamespace).
-
-%% Attribute analysis result
--record(za, {op, val, pos}).
-
-%% Attribute value analysis result
--record(zv, {op, var, producer}).
-          
-
-e1(T) when is_tuple(T) ->  element(1,T).
-
-filter_xa_ns(N,L) ->
-    lists:keysort(?xa.namespace, [E || E <- L, 
-                                       is_tuple(E?xa.namespace),
-                                       e1(E?xa.namespace) == N]).
-
-try_foldf(Fs,InitAcc) -> 
-    try
-        foldf(Fs,InitAcc),
-        false
-    catch
-        throw:Res -> {ok,Res}
-    end.
-
-foldf(Fs,InitAcc) ->
-    lists:foldl(fun(F,Acc) -> F(Acc) end, InitAcc, Fs).
-
-
-analyze_attributes(N,L) ->
-    Ls = filter_xa_ns(N,L),
-    ?DEBUG("Attributes=~p~n", [Ls]),
-    Res = foldf([ za_content(N,L)
-                 ,za_replace(N,L)
-                 ,za_attributes(N,L)
-                 ], []),
-    ?DEBUG("Attribute analysis=~p~n", [Res]),
-    Res.
-    
-
--define(z(N,C,Pos,V), ?xa{namespace={N,C},pos=P,value=V}).
-
-%%% ------------------------------------
-%%% Analyse the 'content' attribute
-%%% Analyse the 'replace' attribute
-%%% Analyse the 'attributes' attribute
-%%%
-za_content(N,L)    -> fun(Zs) -> za("content",N,L,Zs) end.
-za_replace(N,L)    -> fun(Zs) -> za("replace",N,L,Zs) end.
-za_attributes(N,L) -> fun(Zs) -> za("attributes",N,L,Zs) end.
-                           
-za(C, N, [?z(N,C,P,V)|T], Zs) ->
-    Va = analyze_value(V),
-    za(C, N, T, [#za{op=l2a(C),val=Va, pos = P}|Zs]);
-za(C, N, [_|T], Z) -> 
-    za(C, N, T, Z);
-za(_, _, [], Zs) -> 
-    Zs.
-
-
-%%% ------------------------------------
-%%% Analyse the attribute value
-%%%
-analyze_value(V) when is_list(V) ->
-    case string:tokens(V," ") of  
-        [Var,Producer] ->
-            %% Example: "href item/getId"
-            #zv{producer = P} = analyze_value_producer(Producer),
-            V = analyze_value_var(Var),
-            #zv{op = set, var = V, producer = P};
-        _ ->
-            analyze_value_producer(V)
-    end.
-
-analyze_value_var(Var) -> Var.  % FIXME ?
-    
-%%% ------------------------------------
-%%% Analyse how the attribute value should be produced.
-%%%
-analyze_value_producer(V) when is_list(V) ->
-    %% Example: "item/getId"
-    case string:tokens(V,"/") of
-        [Var] -> 
-            #zv{op = get, 
-                var = Var, 
-                producer = get_env_val(Var)
-               };
-        [Var,Fun] ->
-            #zv{op = get, 
-                var = Var, 
-                producer = get_page_val(Var,Fun)
-               };
-        [Var,Fun,Mod] ->
-            #zv{op = get, 
-                var = Var, 
-                producer = get_mod_val(Var,Fun,Mod)
-               }
-    
-            %% FIXME error handling here!!
-    
-    end.
-
-get_env_val(VarName) ->
-    fun(Env) -> lookup(first, VarName, Env) end.
-            
-get_page_val(VarName, Fun) ->
-    fun(Env) -> 
-            Val  = lookup(first, VarName, Env),
-            Page = lookup(first, page, Env),
-            (l2a(Page)):(l2a(Fun))(Val)
-    end.
-            
-get_mod_val(VarName, Fun, Mod) ->
-    fun(Env) -> 
-            Val  = lookup(first, VarName, Env),
-            (l2a(Mod)):(l2a(Fun))(Val)
-    end.
-            
-l2a(L) when is_list(L) -> list_to_atom(L);
-l2a(A) when is_atom(A) -> A.
-
-
-node_apply([#za{op = content, val = Zv}|T], Node, Env) ->
-    VarValue = (Zv#zv.producer)(Env),  % FIXME handle op=set !
-    node_apply(T, Node?xe{content = [normalize_value(VarValue)]}, Env);
-node_apply([#za{op = replace, val = Zv}|T], Node, Env) ->
-    VarValue = (Zv#zv.producer)(Env),  % FIXME handle op=set !
-    normalize_value(VarValue);  % Can't continue here...
-node_apply([], Node, _) ->
-    Node.
-
-
-
-%%% ------------------------------------
-%%% Compile the XML node
-%%%
-c(Node, Attrs, X0) ->
-    #x{xns=N} = X = set_ns(Node, X0),
-    {A,As} = get_attr(N, Node?xe.attributes, []),
-    ?DEBUG("Attrs ~p~n", [A]),
-    Res = analyze_attributes(N,Node?xe.attributes),
-    ?DEBUG("Analyzed attrs: ~p~n", [Res]),
-    fun(Env) ->
-            Fun = fun(Env2) ->
-                          Q = node_apply(Res, Node?xe{attributes=As}, Env2),
-                          ?DEBUG("node_apply: ~p~n", [Q]),
-                          Q
-                  end,
-            exec(Fun, Env)
-    end.
-
-            
-%%% ------------------------------------
-%%% Analyse the XML namespace
-%%%
-set_ns(?xe{namespace = ?xn{default = D, nodes = N}}, X) ->
-    ?DEBUG("set_ns: Xns=~p, N=~p~n", [catch get_key(X#x.ns,N),N]),
-    try X#x{xns=get_key(X#x.ns,N)}
-    catch _:_ -> 
-            try X#x{xns=get_key(X#x.ns,D)}
-            catch _:_ -> X
-            end
-    end.
-        
-get_key(V,[{K,V}|_]) -> K;
-get_key(V,[_|T])     -> get_key(V,T).
-
-get_attr(N, [?xa{namespace={N,_}}=A|T], Acc) -> {A, lists:reverse(Acc)++T};
-get_attr(N, [H|T], Acc)                      -> get_attr(N,T,[H|Acc]);
-get_attr(_,[],Acc)                           -> {[],lists:reverse(Acc)}.
-    
-
-
-
-
-compile(Node, Attrs) ->
-    c(Node, Attrs, #x{});  % Temporary hook into the new code.
-
-compile(Node = #xmlElement{attributes =
-                         [#xmlAttribute{name = 'e:content',
-                                        value = VarName} | Rest]},
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    attributes =
+                    [#xmlAttribute{namespace = {N,"content"},
+                                   value     = VarName} | Rest]} = Node,
         Attributes) ->
-    ?DEBUG("e:content Node=~p", [Node]),
+    ?xdbg("~s:content Node=~p", [N,Node]),
     fun(Env) ->
-            ?DEBUG("Expanding e:content", []),
+            ?xdbg("Expanding ~s:content", [N]),
             
-            VarValue = lookup(first, VarName, Env),
+            VarValue = var_value(VarName, Env),
             Fun = compile(Node#xmlElement{content = [normalize_value(VarValue)],
                                           attributes = Rest},
                           Attributes),
             exec(Fun, Env)
     end;
 
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    attributes =
+                    [#xmlAttribute{namespace={_,"content"}}
+                     | _]} = Node,
+        Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, Attributes);
+
+
 
 %%--------------------------------------------------------------------
+%% @doc
+%%
 %% Transform an element with a "e:replace" attribute to a text node
 %% with value looked up in the environment.
 %%
@@ -387,51 +233,93 @@ compile(Node = #xmlElement{attributes =
 %% If in the environment "name" is "Jim", it will be transformed to:
 %%
 %%   My name is Jim.
+%%
+%% @end
 %%--------------------------------------------------------------------
 
-compile(_Node = #xmlElement{attributes =
-                          [#xmlAttribute{name = 'e:replace',
-                                         value = VarName} | _RAttributes]},
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    attributes =
+                    [#xmlAttribute{namespace = {N,"replace"},
+                                   value     = VarName} | _]},
       _Attributes) ->
     fun(Env) ->
-            ?DEBUG("Expanding e:replace", []),
-            VarValue = lookup(first, VarName, Env),
+            ?xdbg("Expanding ~s:replace", [N]),
+            VarValue = var_value(VarName, Env),
             normalize_value(VarValue)
     end;
 
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    attributes =
+                    [#xmlAttribute{namespace = {_,"replace"}}
+                     | _]} = Node,
+      Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, Attributes);
+
 %%---------------------------------------------------------------------
+%% @doc
+%%
 %% Just like replace but plugs in the results of template application.
+%%
+%% "end
 %%---------------------------------------------------------------------
 
-compile(_Node = #xmlElement{attributes =
-                          [#xmlAttribute{name = 'e:include',
-                                         value = FileName} | _RAttributes]},
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    attributes =
+                    [#xmlAttribute{namespace = {N,"include"},
+                                   value     = FileName} | _]},
       _Attributes) ->
+    ?xdbg("Expanding ~s:include", [N]),
     {#xmlElement{} = Tree, _Misc} = xmerl_scan:file(FileName),
     compile(Tree);
 
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    attributes =
+                    [#xmlAttribute{namespace = {_,"include"}}
+                     | _]} = Node,
+      Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, Attributes);
+
 %%--------------------------------------------------------------------
-%% Trasform an element with "e:condition" attribute into empty text
+%% @doc
+%%
+%% Transform an element with "e:condition" attribute into empty text
 %% node (effectively removing it from the document) if the looked up
 %% value pointed by the attribute is false or undefined.
+%%
+%% @end
 %%--------------------------------------------------------------------
 
-compile(Node = #xmlElement{attributes =
-                         [#xmlAttribute{name = 'e:condition',
-                                        value = VarName} | RAttributes]},
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    attributes =
+                    [#xmlAttribute{namespace = {N,"condition"},
+                                   value     = VarName} | Rest]} = Node,
       Attributes) ->
     fun(Env) ->
-            ?DEBUG("Expanding e:condition", []),
-            case lookup(first, VarName, Env) of
+            ?xdbg("Expanding ~s:condition", [N]),
+            case var_value(VarName, Env) of
                 false ->
                     #xmlText{value = ""};
                 undefined ->
                     #xmlText{value = ""};
                 _Value ->
-                    exec(compile(Node#xmlElement{attributes = RAttributes},
+                    exec(compile(Node#xmlElement{attributes = Rest},
                                  Attributes), Env)
             end
     end;
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    attributes =
+                    [#xmlAttribute{namespace = {_,"condition"}}
+                     | _]} = Node,
+      Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, Attributes);
+
 
 %%---------------------------------------------------------------------
 %% e:repeat
@@ -445,12 +333,14 @@ compile(Node = #xmlElement{attributes =
                      Attributes),
 
     fun(Env) ->
-            ?DEBUG("Expanding e:repeat", []),
+            ?xdbg("Expanding e:repeat", []),
             CloneEnvs = lookup(all, ContextName, Env),
             [exec(Closures, E) || {_C, E} <- CloneEnvs]
     end;
 
 %%--------------------------------------------------------------------
+%% @doc
+%%
 %% Transform an <e:attr> element into an attribute that will be
 %% received by the parent element.
 %%
@@ -494,37 +384,52 @@ compile(Node = #xmlElement{attributes =
 %%
 %%   <div><e:attr name="class" value="cl"/></div>
 %%
+%% @end
 %%--------------------------------------------------------------------
 
-compile(Node = #xmlElement{name = 'e:attr',
-                         attributes = Attributes}, _Attributes) ->
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    nsinfo = {N,"attr"},
+                    attributes = Attributes} = Node, 
+        _Attributes) ->
 
     TargetAttrName = get_attr_value(name, Attributes),
     case get_attr_value(value, Attributes) of
         undefined ->
             Closures = compile(Node#xmlElement.content),
             fun(Env) ->
-                    ?DEBUG("Expanding e:attr", []),
+                    ?xdbg("Expanding ~s:attr", [N]),
 
-                    TargetAttrValue =
+                    [TargetAttrValue] =
                         lists:foldr(
                           fun(#xmlText{value = V}, Acc) ->
                                   [V|Acc]
                           end, [], exec(Closures, Env)),
 
-                    #xmlAttribute{name = list_to_atom(TargetAttrName),
-                                  value = TargetAttrValue}
+                    VarValue = var_value(TargetAttrValue, Env),
+
+                    SS=#xmlAttribute{name  = list_to_atom(TargetAttrName),
+                                     expanded_name = replace,
+                                     value = VarValue},
+                    ?xdbg("SS=~p~n",[SS]),
+                    SS
             end;        
         VarName ->
             fun(Env) ->
-                    ?DEBUG("Expanding e:attr", []),
+                    ?xdbg("Expanding ~s:attr", [N]),
                     
-                    TargetAttrValue = lookup(first, list_to_atom(VarName), Env),
+                    VarValue = var_value(VarName, Env),
                     
-                    #xmlAttribute{name = list_to_atom(TargetAttrName),
-                                  value = TargetAttrValue}
+                    #xmlAttribute{name  = list_to_atom(TargetAttrName),
+                                  value = VarValue}
             end
     end;
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    nsinfo = {_,"attr"}} = Node, 
+        _Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, _Attributes);
 
 %%--------------------------------------------------------------------
 %% Utility tag.  Output current environment.
@@ -563,7 +468,10 @@ compile(Node = #xmlElement{attributes = [],
         case NamespaceInfo of
             {Prefix, _Name} ->
                 NamespaceURI = proplists:get_value(Prefix, NamespaceData#xmlNamespace.nodes),
+                ?xdbg("nsinfo=~p , namespace=~p, URI=~p~n",
+                      [NamespaceInfo,NamespaceData,NamespaceURI]),
                 proplists:get_value(NamespaceURI, dynvar:fetch(handlers));
+            
             [] ->
                 undefined;
             undefined ->
@@ -576,10 +484,34 @@ compile(Node = #xmlElement{attributes = [],
             fun(Env) ->
                     Results = exec(Closures, Env),
 
+                    ?xdbg("RESULTS = ~p~n", [Results]),
+                    ?xdbg("Attributes = ~p~n", [Attributes]),
+
                     {ResultAttributes, ResultContents} =
                         lists:partition(fun(N) -> is_record(N, xmlAttribute) end, Results),
 
-                    Node#xmlElement{attributes = Attributes ++ ResultAttributes,
+                    %% We want to replace any 'e:attr' attributes.
+                    Replace = [A || A <- ResultAttributes,
+                                    A#xmlAttribute.expanded_name == replace],
+                    Replacer = fun(E,Acc) ->
+                                       case lists:keymember(E#xmlAttribute.name, 
+                                                            #xmlAttribute.name,
+                                                            Replace) of
+                                           true ->
+                                               {value,R} 
+                                                   = lists:keysearch(
+                                                       E#xmlAttribute.name, 
+                                                       #xmlAttribute.name, 
+                                                       Replace),
+                                               [R|Acc];
+                                           false ->
+                                               [E|Acc]
+                                       end
+                               end,
+                    Replaced = lists:foldl(Replacer, [], Attributes),
+
+                    Node#xmlElement{attributes = Replaced ++ 
+                                    (ResultAttributes -- Replace),
                                     content = ResultContents}
             end;
         _ ->
@@ -639,3 +571,83 @@ lookup(first, Path, Env) ->
     end;
 lookup(all, Path, Env) ->
     env:lookup(all, Path, Env).
+
+
+
+%% --------------------------------------
+%% Attribute analysis according to TAL.
+%%
+
+%% Attribute value analysis result
+-record(zv, {op, var, producer}).
+
+-define(z(N,C,Pos,V), ?xa{namespace={N,C},pos=P,value=V}).
+
+
+var_value(VarName, Env) ->
+    Zv = analyze_value(VarName),
+    (Zv#zv.producer)(Env).
+
+%%% ------------------------------------
+%%% Analyse the attribute value
+%%%
+analyze_value(V) when is_list(V) ->
+    ?xdbg("analyze_value: V=~p~n", [V]),
+    case string:tokens(V," ") of  
+        [Var,Producer] ->
+            %% Example: "href item/getId"
+            #zv{producer = P} = analyze_value_producer(Producer),
+            VarV = analyze_value_var(Var),
+            #zv{op = set, var = VarV, producer = P};
+        _ ->
+            analyze_value_producer(V)
+    end.
+
+analyze_value_var(Var) -> Var.  % FIXME ?
+    
+%%% ------------------------------------
+%%% Analyse how the attribute value should be produced.
+%%%
+analyze_value_producer(V) when is_list(V) ->
+    %% Example: "item/getId"
+    case string:tokens(V,"/") of
+        [Var] -> 
+            #zv{op = get, 
+                var = Var, 
+                producer = get_env_val(Var)
+               };
+        [Var,Fun] ->
+            #zv{op = get, 
+                var = Var, 
+                producer = get_page_val(Var,Fun)
+               };
+        [Var,Fun,Mod] ->
+            #zv{op = get, 
+                var = Var, 
+                producer = get_mod_val(Var,Fun,Mod)
+               }
+    
+            %% FIXME error handling here!!
+    
+    end.
+
+get_env_val(VarName) ->
+    fun(Env) -> lookup(first, VarName, Env) end.
+            
+get_page_val(VarName, Fun) ->
+    fun(Env) -> 
+            Page = lookup(first, page, Env),
+            (l2a(Page)):(l2a(Fun))(VarName,Env)
+    end.
+            
+get_mod_val(VarName, Fun, Mod) ->
+    fun(Env) -> 
+            (l2a(Mod)):(l2a(Fun))(VarName, Env)
+    end.
+            
+l2a(L) when is_list(L) -> list_to_atom(L);
+l2a(A) when is_atom(A) -> A.
+
+
+
+            

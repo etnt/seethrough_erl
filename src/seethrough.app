@@ -4,6 +4,7 @@
   {modules, [
     seethrough,
     seethrough_app,
+    seethrough_nitrogen,
     env,
     dynvar
   ]},
