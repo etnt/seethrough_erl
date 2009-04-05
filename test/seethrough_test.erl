@@ -219,6 +219,24 @@ attribute_string() ->
 
 
 
+use_xml_as_values_test() ->
+    ?assertMatch("<span xmlns:e=\"http://dev.hyperstruct.net/seethrough\"><i>hello</i></span>", stringify(use_xml_as_values())).
+
+use_xml_as_values() ->
+    S = "<span xmlns:e=\"http://dev.hyperstruct.net/seethrough\" e:content=\"foreign\"/>",
+    {El, _} = xmerl_scan:string("<i>hello</i>"),
+    stringify(seethrough:apply_template({string, S}, [{foreign, El}])).
+    
+use_xml_as_values2_test() ->
+    ?assertMatch("<i>hello</i>", stringify(use_xml_as_values2())).
+
+use_xml_as_values2() ->
+    S = "<span xmlns:e=\"http://dev.hyperstruct.net/seethrough\" e:replace=\"foreign\"/>",
+    {El, _} = xmerl_scan:string("<i>hello</i>"),
+    stringify(seethrough:apply_template({string, S}, [{foreign, El}])).
+
+
+
 nitrogen() ->
     stringify(
       seethrough:apply_template(
@@ -254,12 +272,6 @@ test_repeat() ->
                                                 {member, [{name, "scotty"}]}]),
     "<select><option value=\"jim\" selected=\"selected\">jim</option>" ++
         "<option value=\"scotty\">scotty</option></select>" = stringify(X).
-
-test_use_xml_as_values() ->
-    S = "<span e:content=\"foreign\"/>",
-    {El, _} = xmerl_scan:string("<i>hello</i>"),
-    X = seethrough:apply_template({string, S}, [{foreign, El}]),
-    "<span><i>hello</i></span>" = stringify(X).
 
 test_retrieving_sub_element() ->
     S = "<ul><li e:repeat=\"members/member\"><span e:replace=\"name\"/></li></ul>",

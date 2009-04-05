@@ -246,7 +246,8 @@ compile(#xmlElement{namespace=
     fun(Env) ->
             ?xdbg("Expanding ~s:replace", [N]),
             VarValue = var_value(VarName, Env),
-            normalize_value(VarValue)
+            Fun = compile(normalize_value(VarValue)),
+            exec(Fun,Env)
     end;
 
 compile(#xmlElement{namespace=
@@ -531,10 +532,11 @@ compile(Node = #xmlElement{attributes = [],
 %%          otherwise, return it wrapped into an xmlText record.
 %%--------------------------------------------------------------------
 
-normalize_value(VarValue) when is_record(VarValue, xmlElement) ->
-    VarValue;
-normalize_value(VarValue) when is_record(VarValue, xmlText) ->
-    VarValue;
+normalize_value(VarValue) when is_record(VarValue, xmlElement) -> VarValue;
+normalize_value(VarValue) when is_record(VarValue, xmlText)    -> VarValue;
+normalize_value([H|_]=L) when is_record(H, xmlText) orelse 
+                              is_record(H, xmlElement) ->
+    [normalize_value(E) || E <- L];
 normalize_value(VarValue) when is_integer(VarValue) ->
     normalize_value(integer_to_list(VarValue));
 normalize_value(VarValue) when is_list(VarValue) ->
