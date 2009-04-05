@@ -48,9 +48,9 @@
          get_attr_value/2,
          lookup/3]).
 
--define(xdbg(Message, Args), 
-        io:format("~p(~p): ~s~n", [?MODULE,?LINE,io_lib:format(Message, Args)])).
-%%-define(xdbg(Message, Args), no_op).
+%%-define(xdbg(Message, Args), 
+%%        io:format("~p(~p): ~s~n", [?MODULE,?LINE,io_lib:format(Message, Args)])).
+-define(xdbg(Message, Args), ok).
 
 -define(namespace, 'http://dev.hyperstruct.net/seethrough').
 
@@ -478,6 +478,8 @@ compile(Node = #xmlElement{attributes = [],
                 undefined
         end,
 
+    ?xdbg("+++ HANDLER IS: ~p, handlers=~p~n",[Handler,dynvar:fetch(handlers)]),
+
     case Handler of
         undefined ->
             Closures = compile(Content),
@@ -516,6 +518,7 @@ compile(Node = #xmlElement{attributes = [],
             end;
         _ ->
             Handler:compile(Node, Attributes)
+            
     end.
 
 %%%-------------------------------------------------------------------

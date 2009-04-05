@@ -30,6 +30,11 @@
     <xsd:attribute name="next" type="xsd:string" use="required" />
   </xsd:complexType>
 
+  <xsd:complexType name="tPassword">
+    <xsd:attribute name="id"   type="xsd:string" use="required" />
+    <xsd:attribute name="next" type="xsd:string" use="required" />
+  </xsd:complexType>
+
   <xsd:complexType name="tButton">
     <xsd:attribute name="id"       type="xsd:string" use="required" />
     <xsd:attribute name="text"     type="xsd:string" use="required" />
@@ -61,9 +66,10 @@
 
   <!-- Nitrogen elements -->
 
-  <xsd:element name="label"   type="tLabel" />
-  <xsd:element name="textbox" type="tTextbox" />
-  <xsd:element name="button"  type="tButton"/>
-  <xsd:element name="wire"    type="tWire" /> 
+  <xsd:element name="label"    type="tLabel" />
+  <xsd:element name="textbox"  type="tTextbox" />
+  <xsd:element name="password" type="tPassword" />
+  <xsd:element name="button"   type="tButton"/>
+  <xsd:element name="wire"     type="tWire" /> 
 
 </xsd:schema>
