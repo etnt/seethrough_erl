@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?> 
+
+<n:wire xmlns:n="http://dev.tornkvist.org/seethrough/nitrogen" 
+	to="continueButton" 
+	what="emailTextBox">
+  <n:validate>
+    <n:is_required text="Required"/>
+  </n:validate>
+</n:wire>

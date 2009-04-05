@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?> 
+<!-- 
+ Dev.info: {E,_} = xmerl_scan:file("nitrogen.xml").
+           {ok,S} = xmerl_xsd:process_schema("nitrogen.xsd").
+           {E2,_} = xmerl_xsd:validate(E,S).
+ 
+ Validate at:  http://www.w3.org/2001/03/webdata/xsv
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+	    targetNamespace="http://dev.tornkvist.org/seethrough/nitrogen"
+	    xmlns="http://dev.tornkvist.org/seethrough/nitrogen"
+	    elementFormDefault="qualified"
+	    attributeFormDefault="unqualified" >
+  <xsd:annotation> 
+    <xsd:documentation xml:lang="en"> 
+      Schema for Nitrogen.
+      Copyright 2009, Torbjorn Tornkvist. 
+    </xsd:documentation> 
+  </xsd:annotation> 
+
+
+  <!-- Element types -->
+
+  <xsd:complexType name="tLabel">
+      <xsd:attribute name="text" type="xsd:string" use="required" />
+  </xsd:complexType>
+
+  <xsd:complexType name="tTextbox">
+    <xsd:attribute name="id"   type="xsd:string" use="required" />
+    <xsd:attribute name="next" type="xsd:string" use="required" />
+  </xsd:complexType>
+
+  <xsd:complexType name="tButton">
+    <xsd:attribute name="id"       type="xsd:string" use="required" />
+    <xsd:attribute name="text"     type="xsd:string" use="required" />
+    <xsd:attribute name="postback" type="xsd:string" use="required" />
+  </xsd:complexType>
+
+
+  <!-- Part of the 'wire' context -->
+
+  <xsd:complexType name="tIsRequired">
+    <xsd:attribute name="text" type="xsd:string" use="required" />
+  </xsd:complexType>
+
+  <!-- Validators -->
+  <xsd:complexType name= "tValidate">
+    <xsd:choice>
+      <xsd:element name="is_required" type="tIsRequired" />
+    </xsd:choice>
+  </xsd:complexType>
+
+  <xsd:complexType name="tWire">
+    <xsd:attribute name="to"   type="xsd:string" use="required" />
+    <xsd:attribute name="what" type="xsd:string" use="required" />
+    <xsd:choice>
+      <xsd:element name="validate" type="tValidate" /> 
+    </xsd:choice>
+  </xsd:complexType>
+
+
+  <!-- Nitrogen elements -->
+
+  <xsd:element name="label"   type="tLabel" />
+  <xsd:element name="textbox" type="tTextbox" />
+  <xsd:element name="button"  type="tButton"/>
+  <xsd:element name="wire"    type="tWire" /> 
+
+</xsd:schema>
