@@ -85,6 +85,30 @@ button() ->
         [{title, "Button Test"}],
         [{'http://dev.tornkvist.org/seethrough/nitrogen', seethrough_nitrogen}])).
 
+wire_validate() ->
+    stringify(
+      seethrough:apply_template(
+        {string, 
+         "<html xmlns=\"http://www.w3.org/1999/xhtml\" "
+         "      xmlns:e=\"http://dev.hyperstruct.net/seethrough\" "
+         "      xmlns:n=\"http://dev.tornkvist.org/seethrough/nitrogen\">"
+         "  <head>"
+         "    <title e:content=\"title\"/>"
+         "  </head>"
+         "  <body>"
+         "    <n:wire to=\"continueButton\" what=\"nameTextBox\">"
+         "      <n:validate>"
+         "        <n:is_required text=\"Required\"/>"
+         "      </n:validate>"
+         "    </n:wire>"
+         "  </body>"
+         "</html>"
+         },
+        [{title, "Textbox Test"}],
+        [{'http://dev.tornkvist.org/seethrough/nitrogen', seethrough_nitrogen}])).
+    
+
+
 
 all() ->
     stringify(
@@ -105,6 +129,16 @@ all() ->
          "    <n:password id=\"passwordTextBox\"  next=\"continueButton\"/>"
          "    <p />"
          "    <n:button id=\"continueButton\" text=\"Continue\" postback=\"continue\"/>"
+         "    <n:wire to=\"continueButton\" what=\"nameTextBox\">"
+         "      <n:validate>"
+         "        <n:is_required text=\"Name is Required\"/>"
+         "      </n:validate>"
+         "    </n:wire>"
+         "    <n:wire to=\"continueButton\" what=\"passwordTextBox\">"
+         "      <n:validate>"
+         "        <n:is_required text=\"Password is Required\"/>"
+         "      </n:validate>"
+         "    </n:wire>"
          "  </body>"
          "</html>"
          },
@@ -112,8 +146,6 @@ all() ->
         [{'http://dev.tornkvist.org/seethrough/nitrogen', seethrough_nitrogen}])).
 
 
-
-%%    
 
 %%% --------------------------------------------------------------------
 %%% Validating tests for the XML Schema

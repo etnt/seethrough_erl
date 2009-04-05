@@ -6,7 +6,7 @@
 
 -export([compile/2]).
 
-%%-import(seethrough, [get_attr_value/2]).
+-import(seethrough, [exec/2]).
 
 -include_lib("xmerl/include/xmerl.hrl").
 
@@ -38,9 +38,8 @@ compile(#xmlElement{namespace=
             fun(_Env) ->
                     ?xdbg("Expanding ~s:label", [N]),
 
-                    %% FIXME get a proper TempID !!
-
-                    Html = "<span id='temp273949' class='label'>"++Value++"</span>",
+                    TempID = temp_id(),
+                    Html = "<span id='"++TempID++"' class='label'>"++Value++"</span>",
                     {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
                     Tree
 
@@ -72,8 +71,6 @@ compile(#xmlElement{namespace=
         Id ->
             fun(_Env) ->
                     ?xdbg("Expanding ~s:textbox~n", [N]),
-
-                    %% FIXME get a proper TempID !!
 
                     Next = next(Attributes),
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' type='text' class='textbox'/>",
@@ -111,8 +108,6 @@ compile(#xmlElement{namespace=
         Id ->
             fun(_Env) ->
                     ?xdbg("Expanding ~s:password~n", [N]),
-
-                    %% FIXME get a proper TempID !!
 
                     Next = next(Attributes),
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' type='password' class='password'/>",
@@ -152,8 +147,6 @@ compile(#xmlElement{namespace=
             fun(_Env) ->
                     ?xdbg("Expanding ~s:button", [N]),
 
-                    %% FIXME get a proper TempID !!
-
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' "
                         " type='button' class='button' value='"++Value++"'/>",
                     {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
@@ -169,8 +162,108 @@ compile(#xmlElement{namespace=
     compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, _Attributes);
 
 
+%%% --------------------------------------------------------------------
+%%% W I R E
+%%% --------------------------------------------------------------------
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    nsinfo = {N,"wire"},
+                    attributes = _Attributes} = Node, 
+        Attributes) ->
+
+    case {get_value(to, Attributes),
+          get_value(what, Attributes)} of
+
+          {X,Y} when X==undefined orelse Y==undefined ->
+            fun(_Env) ->
+                    ?xdbg("ERROR Expanding ~s:wire", [N]),
+                    Node
+            end;        
+
+        {To,What} ->
+            put(wire,{To,What}),
+            Closures = seethrough:compile(Node#xmlElement.content),
+            erase(wire),
+            fun(Env) ->
+                    ?xdbg("Expanding ~s:wire", [N]),
+                    exec(Closures, Env)
+            end
+    end;
 
 
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    nsinfo = {_,"wire"}} = Node, 
+        _Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, _Attributes);
+
+%%% --------------------------------------------------------------------
+%%% V A L I D A T E
+%%% --------------------------------------------------------------------
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    nsinfo = {N,"validate"}
+                   } = Node, 
+        _Attributes) ->
+
+    Closures = seethrough:compile(Node#xmlElement.content),
+    fun(Env) ->
+            ?xdbg("Expanding ~s:validate", [N]),
+            exec(Closures, Env)
+    end;
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    nsinfo = {_,"validate"}} = Node, 
+        _Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, _Attributes);
+
+
+%%% --------------------------------------------------------------------
+%%% I S _ R E Q U I R E D
+%%% --------------------------------------------------------------------
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    nsinfo = {N,"is_required"},
+                    attributes = _Attributes} = Node, 
+        Attributes) ->
+
+    case {get_value(text, Attributes),get(wire)} of
+
+          {undefined,_} ->
+            fun(_Env) ->
+                    ?xdbg("ERROR Expanding ~s:is_required", [N]),
+                    Node
+            end;      
+  
+        {Text,{To,What}} ->
+            fun(_Env) ->
+                    ?xdbg("Expanding ~s:is_required", [N]),
+
+                    Html = "<script type=\"text/javascript\">Nitrogen.$current_id='page';Nitrogen.$current_path='"++What++"';var v = obj('me').validator = new LiveValidation(obj('me'), { validMessage: " ", onlyOnBlur: false, onlyOnSubmit: true });v.trigger = obj('"++To++"');v.add(Validate.Presence, { failureMessage: \""++Text++"\" });;</script>",
+                    {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
+                    Tree
+               end;
+
+          _ ->
+            fun(_Env) ->
+                    ?xdbg("ERROR Expanding ~s:is_required", [N]),
+                    Node
+            end
+
+    end;
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    nsinfo = {_,"is_required"}} = Node, 
+        _Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, _Attributes);
+
+
+%%% --------------------------------------------------------------------
 
 compile(Node, Attributes) -> 
     ?xdbg("compile: Node=~p , Attributes=~p~n",[Node,Attributes]),
@@ -196,3 +289,11 @@ get_value(Name, Attributes) ->
         _:_ -> undefined
     end.
     
+%%% Get a proper Nitrogen TempID , fallback to make our own in case
+%%% we are not running in a Nitrogen node (when doing Seethrough dev. e.g).
+temp_id() ->
+    try wf:temp_id()
+    catch _:_ ->
+            {_, _, C} = now(), 
+            "temp" ++ integer_to_list(C)
+    end.
