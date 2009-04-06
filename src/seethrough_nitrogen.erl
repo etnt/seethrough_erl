@@ -4,7 +4,9 @@
 %%%-------------------------------------------------------------------
 -module(seethrough_nitrogen).
 
--export([compile/2]).
+-export([compile/2
+         ,generate_scripts/0
+        ]).
 
 -import(seethrough, [exec/2]).
 
@@ -20,10 +22,14 @@
 -record(wire, {
           to,
           what,
-          validators,
-          events
+          validators=[],
+          events=[]
          }).
 
+-record(validator, {
+          type='$undefined$',  % is_required | ...
+          text=""
+         }).
 
 %%% --------------------------------------------------------------------
 %%% L A B E L
@@ -81,17 +87,7 @@ compile(#xmlElement{namespace=
 
                     Next = next(Attributes), % FIXME
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' type='text' class='textbox'/>",
-                    Script = fun(W) ->
-                                     case lists:keysearch(Id, #wire.what, W) of
-                                         {value,#wire{to = To}} ->
-                                             "wf_current_path='"++Id++"'; "
-                                                 "var v = obj('me').validator = new LiveValidation(obj('me'), { validMessage: " ", onlyOnBlur: false, onlyOnSubmit: true });"
-                                                 "v.trigger = obj('"++To++"');" ++
-                                                 add_validators(W);
-                                         _ -> ""
-                                     end
-                             end,
-                    push(script, Script),
+                    push(scripts, mk_script(Id)),
                     {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
                     ?xdbg("Expanding ~s:textbox~n", [N]),
                     Tree
@@ -127,10 +123,9 @@ compile(#xmlElement{namespace=
 
                     Next = next(Attributes),
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' type='password' class='password'/>",
-                    Script = "<script type=\"text/javascript\">Nitrogen.$observe_event(obj('page."++Id++"'), 'keypress', function anonymous(event) {if (Nitrogen.$is_enter_key(event)) {  Nitrogen.$current_id='page';Nitrogen.$current_path='page."++Id++"';"++Next++"</script>",
+                    push(scripts, mk_script(Id)),
                     {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
-                    {#xmlElement{} = Tree2, _} = xmerl_scan:string(Script),
-                    [Tree,Tree2]
+                    Tree
 
             end
     end;
@@ -198,8 +193,9 @@ compile(#xmlElement{namespace=
             end;        
 
         {To,What} ->
-            put(wire,{To,What}),
+            put(wire,#wire{to=To,what=What}),
             Closures = seethrough:compile(Node#xmlElement.content),
+            push(wires, get(wire)),
             erase(wire),
             fun(Env) ->
                     ?xdbg("Expanding ~s:wire", [N]),
@@ -247,29 +243,20 @@ compile(#xmlElement{namespace=
                     attributes = _Attributes} = Node, 
         Attributes) ->
 
-    case {get_value(text, Attributes),get(wire)} of
+    case get_value(text, Attributes) of
 
-          {undefined,_} ->
+          undefined ->
             fun(_Env) ->
                     ?xdbg("ERROR Expanding ~s:is_required", [N]),
                     Node
             end;      
   
-        {Text,{To,What}} ->
+        Text ->
             fun(_Env) ->
                     ?xdbg("Expanding ~s:is_required", [N]),
-
-                    Html = "<script type=\"text/javascript\">Nitrogen.$current_id='page';Nitrogen.$current_path='"++What++"';var v = obj('me').validator = new LiveValidation(obj('me'), { validMessage: " ", onlyOnBlur: false, onlyOnSubmit: true });v.trigger = obj('"++To++"');v.add(Validate.Presence, { failureMessage: \""++Text++"\" });;</script>",
-                    {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
-                    Tree
-               end;
-
-          _ ->
-            fun(_Env) ->
-                    ?xdbg("ERROR Expanding ~s:is_required", [N]),
-                    Node
-            end
-
+                    push_validator(#validator{type = is_required, text = Text}),
+                    #xmlText{}
+               end
     end;
 
 compile(#xmlElement{namespace=
@@ -321,15 +308,42 @@ push(Key, Value) ->
     end.
     
 
-%%% FIXME
+
 %%%
 %%% At the end of the document add:
 %%%
 %%% <script n:content="_/generate_scripts"/>
 %%%
+generate_scripts() ->
+    Ws = get(wires),
+    lists:flatten([F(Ws) || F <- get(scripts)]).
 
-add_validators(#wire{what=What,validators=Vs}) ->
+
+mk_script(Id) ->
+    fun(Ws) ->
+            case lists:keysearch(Id, #wire.what, Ws) of
+                {value,#wire{} = W} ->
+                    "wf_current_path='"++Id++"'; "++
+                        add_validators(W);
+                _ -> ""
+            end
+    end.
+
+
+add_validators(#wire{to = To, what=What,validators=Vs}) ->
     %% FIXME lookup the validator records and generate Javascript.
     %%"v.add(Validate.Presence, { failureMessage: "Required." });;
     %%{#xmlElement{} = Tree2, _} = xmerl_scan:string(Script),
+    "var v = obj('me').validator = new LiveValidation(obj('me'), "
+        "{ validMessage: " ", onlyOnBlur: false, onlyOnSubmit: true });"++
+        [add_validator(V) || V <- Vs] ++
+        "v.trigger = obj('"++To++"');\n".
+
+add_validator(#validator{type = is_required, text = Text}) ->
+    "v.add(Validate.Presence, { failureMessage: '"++Text++"' });";
+add_validator(_) ->
     "".
+
+push_validator(#validator{}=V) ->
+    #wire{validators = Vs} = W = get(wire),
+    put(wire, W#wire{validators=Vs++[V]}).
