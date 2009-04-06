@@ -1,0 +1,7 @@
+*.beam
+*.html
+*.png
+*~
+doc/edoc-info
+doc/stylesheet.css
+ebin/seethrough.app

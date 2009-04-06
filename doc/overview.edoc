@@ -1,0 +1,120 @@
+@title Seethrough - A simple XML-based template system
+@doc 
+<p>
+  <em>Seethrough</em> provides a mechanism for XML templating;
+  in particular to be used for producing XHTML. Seethrough
+  templates can be either well-formed XML documents or HTML 
+  documents, in which all special markup is presented as 
+  elements or attributes in the Seethrough namespace. 
+  Seethrough offers just a very limited set of tools for conditional 
+  inclusion and repetition of XML elements, thus the templates 
+  are usually quite simple, with most logic implemented in Erlang code. 
+  One significant advantage of Seethrough templates is that they can 
+  be edited in most graphical HTML editors. Seethrough also offers
+  a way to extend and customize the template system by allowing
+  for handlers of other namespaces to easily be hooked into the
+  processing of a template document.
+</p>
+<p>
+  Seethrough borrows lots of ideas from the Zope Page Templates (ZPT) system.
+  Also, some of the text in this document is taken from the ZPT documentation
+  and adjusted to fit Seethrough and the use of Erlang.
+</p>
+<p>
+  The goal of Seethrough Templates is to allow designers and programmers 
+  to work together easily. A designer can use a WYSIWYG HTML editor to 
+  create a template, then a programmer can edit it to make it part of an 
+  application. If required, the designer can load the template back into 
+  his editor and make further changes to its structure and appearance. 
+  By taking reasonable steps to preserve the changes made by the programmer, 
+  the designer will not disrupt the application.
+</p>
+<p>
+Page Templates aim at this goal by adopting three principles:
+</p>
+<ol>
+  <li>Play nicely with editing tools.</li>
+  <li>What you see is very similar to what you get.</li>
+  <li>Keep code out of templates, except for structural logic.</li>
+</ol>
+<p>
+  A Seethrough Template is like a model of the pages that it will generate. 
+  In particular, it is parseable by most HTML tools.
+</p>
+
+<h2>How Seethrough Templates Work</h2>
+<p>
+  Seethrough recognizes a number of tags and tag attributes, all defined
+  within the Seethrough namespace (<em>http://dev.hyperstruct.net/seethrough</em>).
+  For example, a dynamic page headline might look like this:
+</p>
+<pre>
+&lt;h1 xmlns:e="http://dev.hyperstruct.net/seethrough"
+    e:content="title">Sample Page Title&lt;/h1>
+</pre>
+<p>
+  Then namespace declaration and the choosen namespace prefix makes it possible
+  for Seethrough to identify <em>e:content</em> as an attribute to be
+  processed by Seethrough. The name <em>content</em> indicates that it will set 
+  the text contained by the <em>h1</em> tag. The value <em>"title"</em> is an 
+  expression providing the text to insert into the tag. In this case 
+  <em>"title"</em> is the key that is used to lookup the value content from
+  a provided environment. Given that it resolves to <em>"Susan Jones Home Page"</em>, 
+  the generated HTML snippet looks like this:
+</p>
+<pre>
+&lt;h1>Susan Jones Home Page&lt;/h1>
+</pre>
+<p>
+  To the HTML designer using a WYSIWYG tool, the dynamic headline example is 
+  perfectly parseable HTML, and shows up in their editor looking like a headline 
+  should look like. In other words, Page Templates play nicely with editing tools.
+</p>
+<p>
+  This example also demonstrates the principle that 
+  <em>"What you see is very similar to what you get"</em>. 
+  When you view the template in an editor, the headline text will act as a 
+  placeholder for the dynamic headline text. The template provides an example 
+  of how generated documents will look.
+</p>
+<p>
+  Note that the actual namespace declaration normally is made at the topmost
+  enclosing element. We will therefore not include it in many of the following 
+  short examples.
+</p>
+<h2>Creating a Seethrough Template</h2>
+Create a file, named <em>ex1.html</em>, and insert the following template:
+<pre>
+&lt;html xmlns="http://www.w3.org/1999/xhtml" 
+      xmlns:e="http://dev.hyperstruct.net/seethrough">
+  &lt;body>
+    &lt;p>
+      This is &lt;b e:content="title">the Title&lt;/b>.
+    &lt;/p>
+  &lt;/body>
+&lt;/html>
+</pre>
+<p>
+  Start up an Erlang shell an run the following commands:
+</p>
+<pre>
+# erl -pa $SEETHROUGH_EBIN_PATH
+1> S=seethrough:file("./test/ex1.html", [{title,"Hello World"}]),
+   io:format("~s~n",[S]).
+&lt;html xmlns="http://www.w3.org/1999/xhtml" xmlns:e="http://dev.hyperstruct.net/seethrough">
+  &lt;body>
+    &lt;p>
+      This is &lt;b>Hello World&lt;/b>.
+    &lt;/p>
+  &lt;/body>
+&lt;/html>
+ok 
+7> 
+</pre>
+<p>
+  As you can see, the content of the original <em>b</em> element has been replaced 
+  with the corresponding value of the <em>title</em> key that you provided in the
+  <em>environment</em>. The latter is simply a list of {Key,Value} tuples.
+</p>
+
+

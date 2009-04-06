@@ -6,6 +6,18 @@
 %%%
 %%% Copyright (c) 2006-2007 Massimiliano Mirra.
 %%%
+%%% @doc Seethrough - A simple XML-based template system
+%%%
+%%%      <em>Seethrough</em> provides a mechanism for XML templating;
+%%%      in particular to be used for producing XHTML.
+%%%
+%%% @type kvl() = [kvt()]
+%%% @type kvt() = {key(),value()}
+%%% @type key() = atom()
+%%% @type value() = string()
+%%%
+%%% @end
+%%%
 %%% Contributors:
 %%%
 %%%   Joel Reymont <joelr1 [at] gmail [dot] com>
@@ -44,6 +56,7 @@
 -include_lib("xmerl/include/xmerl.hrl").
 -export([render/2, render/3,
          compile/1, exec/2,
+         file/2,
          apply_template/2, apply_template/3,
          get_attr_value/2,
          lookup/3]).
@@ -55,6 +68,16 @@
 -define(namespace, 'http://dev.hyperstruct.net/seethrough').
 
 
+%%% --------------------------------------------------------------------
+%%% @spec file(FileName::string(), Env::kvl()) -> ok
+%%%
+%%% @doc Process a Seethrough template file.
+%%%
+%%% @end
+%%% --------------------------------------------------------------------
+file(Fname, Env) when is_list(Fname),is_list(Env) ->
+    render({file,Fname}, Env).
+    
 
 %%%-------------------------------------------------------------------
 %%% Sample environment
