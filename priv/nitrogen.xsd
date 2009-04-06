@@ -66,6 +66,7 @@
 
   <!-- Nitrogen elements -->
 
+  <xsd:element name="flash" />
   <xsd:element name="label"    type="tLabel" />
   <xsd:element name="textbox"  type="tTextbox" />
   <xsd:element name="password" type="tPassword" />

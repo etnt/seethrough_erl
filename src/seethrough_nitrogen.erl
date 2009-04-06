@@ -5,7 +5,8 @@
 -module(seethrough_nitrogen).
 
 -export([compile/2
-         ,generate_scripts/0
+         ,generate_scripts/2
+         ,cleanup/0
         ]).
 
 -import(seethrough, [exec/2]).
@@ -30,6 +31,29 @@
           type='$undefined$',  % is_required | ...
           text=""
          }).
+
+-record(event, {
+          module = action_event,
+          trigger = undefined,
+          target = undefined,
+          actions = undefined,
+          show_if = true,
+          type = click,
+          interval = 1,
+          postback = "continue",
+          delegate = undefined,
+          controls = []
+         }).
+
+
+
+cleanup() ->
+    erase(wire),
+    erase(wires),
+    erase(scripts),
+    erase(wired_scripts).
+
+    
 
 %%% --------------------------------------------------------------------
 %%% L A B E L
@@ -65,6 +89,42 @@ compile(#xmlElement{namespace=
         _Attributes) ->
     compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, _Attributes);
 
+
+%%% --------------------------------------------------------------------
+%%% F L A S H
+%%% --------------------------------------------------------------------
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[{N,?namespace}|_]},
+                    nsinfo = {N,"flash"},
+                    attributes = _Attributes} = Node, 
+        Attributes) ->
+
+    case get_value(text, Attributes) of
+        undefined ->
+            fun(_Env) ->
+                    ?xdbg("ERROR Expanding ~s:flash", [N]),
+                    Node
+            end;        
+        Value ->
+            fun(_Env) ->
+                    ?xdbg("Expanding ~s:flash", [N]),
+
+                    Html = "<div id='page__flash' class='panel flash_container'></div>",
+                    {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
+                    Tree
+
+            end
+    end;
+
+compile(#xmlElement{namespace=
+                    #xmlNamespace{nodes=[_|Ns]} = Xns,
+                    nsinfo = {_,"flash"}} = Node, 
+        _Attributes) ->
+    compile(Node#xmlElement{namespace=Xns#xmlNamespace{nodes=Ns}}, _Attributes);
+
+
+
 %%% --------------------------------------------------------------------
 %%% T E X T B O X
 %%% --------------------------------------------------------------------
@@ -87,7 +147,7 @@ compile(#xmlElement{namespace=
 
                     Next = next(Attributes), % FIXME
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' type='text' class='textbox'/>",
-                    push(scripts, mk_script(Id)),
+                    push(wired_scripts, mk_script(Id)),
                     {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
                     ?xdbg("Expanding ~s:textbox~n", [N]),
                     Tree
@@ -123,7 +183,7 @@ compile(#xmlElement{namespace=
 
                     Next = next(Attributes),
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' type='password' class='password'/>",
-                    push(scripts, mk_script(Id)),
+                    push(wired_scripts, mk_script(Id)),
                     {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
                     Tree
 
@@ -147,16 +207,23 @@ compile(#xmlElement{namespace=
         Attributes) ->
 
     case {get_value(id, Attributes),
-          get_value(text, Attributes)} of
+          get_value(text, Attributes),
+          get_value(postback, Attributes)} of
 
-          {X,Y} when X==undefined orelse Y==undefined ->
+          {X,Y,_} when X==undefined orelse Y==undefined ->
             fun(_Env) ->
                     ?xdbg("ERROR Expanding ~s:button", [N]),
                     Node
             end;        
-        {Id,Value} ->
+        {Id,Value,Postback} ->
             fun(_Env) ->
                     ?xdbg("Expanding ~s:button", [N]),
+
+%%"wf_observe_event(obj('page."++Id++"'), 'click', function anonymous(event) { wf_queue_postback('page."++Id++"', '0RDNkINQAAAAXHicy2DKY2VI2-13mC-DNYWBNTknMzk7m0GkIDE9NT4-OT-vJDOvNNWptKQkPw-nMAdMIIWBpzw1KT4vs6QoPz01DwCvBiC7');  });
+                    
+                    Script = action_event:render_action("page."++Id, "page."++Id, #event{postback=Postback}),
+                    push(scripts, fun() -> Script end),
+
 
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' "
                         " type='button' class='button' value='"++Value++"'/>",
@@ -252,11 +319,11 @@ compile(#xmlElement{namespace=
             end;      
   
         Text ->
+            push_validator(#validator{type = is_required, text = Text}),
             fun(_Env) ->
                     ?xdbg("Expanding ~s:is_required", [N]),
-                    push_validator(#validator{type = is_required, text = Text}),
-                    #xmlText{}
-               end
+                    #xmlText{value=""}
+            end
     end;
 
 compile(#xmlElement{namespace=
@@ -314,9 +381,11 @@ push(Key, Value) ->
 %%%
 %%% <script n:content="_/generate_scripts"/>
 %%%
-generate_scripts() ->
+generate_scripts(_,_) ->
     Ws = get(wires),
-    lists:flatten([F(Ws) || F <- get(scripts)]).
+    lists:flatten([wf_state:get_state_script(),
+                   [F(Ws) || F <- get(wired_scripts)],
+                   [S() || S <- get(scripts)]]).
 
 
 mk_script(Id) ->
@@ -335,7 +404,7 @@ add_validators(#wire{to = To, what=What,validators=Vs}) ->
     %%"v.add(Validate.Presence, { failureMessage: "Required." });;
     %%{#xmlElement{} = Tree2, _} = xmerl_scan:string(Script),
     "var v = obj('me').validator = new LiveValidation(obj('me'), "
-        "{ validMessage: " ", onlyOnBlur: false, onlyOnSubmit: true });"++
+        "{ validMessage: \" \", onlyOnBlur: false, onlyOnSubmit: true });"++
         [add_validator(V) || V <- Vs] ++
         "v.trigger = obj('"++To++"');\n".
 
@@ -345,5 +414,6 @@ add_validator(_) ->
     "".
 
 push_validator(#validator{}=V) ->
+    ?xdbg("push_validator: V=~p, wire:~p", [V,get(wire)]),
     #wire{validators = Vs} = W = get(wire),
     put(wire, W#wire{validators=Vs++[V]}).
