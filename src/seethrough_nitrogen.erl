@@ -17,6 +17,13 @@
 
 -define(namespace, 'http://dev.tornkvist.org/seethrough/nitrogen').
 
+-record(wire, {
+          to,
+          what,
+          validators,
+          events
+         }).
+
 
 %%% --------------------------------------------------------------------
 %%% L A B E L
@@ -72,13 +79,22 @@ compile(#xmlElement{namespace=
             fun(_Env) ->
                     ?xdbg("Expanding ~s:textbox~n", [N]),
 
-                    Next = next(Attributes),
+                    Next = next(Attributes), % FIXME
                     Html = "<input id='page__"++Id++"' name='page__"++Id++"' type='text' class='textbox'/>",
-                    Script = "<script type=\"text/javascript\">Nitrogen.$observe_event(obj('page."++Id++"'), 'keypress', function anonymous(event) {if (Nitrogen.$is_enter_key(event)) {  Nitrogen.$current_id='page';Nitrogen.$current_path='page."++Id++"';"++Next++"</script>",
+                    Script = fun(W) ->
+                                     case lists:keysearch(Id, #wire.what, W) of
+                                         {value,#wire{to = To}} ->
+                                             "wf_current_path='"++Id++"'; "
+                                                 "var v = obj('me').validator = new LiveValidation(obj('me'), { validMessage: " ", onlyOnBlur: false, onlyOnSubmit: true });"
+                                                 "v.trigger = obj('"++To++"');" ++
+                                                 add_validators(W);
+                                         _ -> ""
+                                     end
+                             end,
+                    push(script, Script),
                     {#xmlElement{} = Tree, _} = xmerl_scan:string(Html),
-                    {#xmlElement{} = Tree2, _} = xmerl_scan:string(Script),
-                    ?xdbg("Expanding ~s:textbox to: ~p~n", [N,[Tree,Tree2]]),
-                    [Tree,Tree2]
+                    ?xdbg("Expanding ~s:textbox~n", [N]),
+                    Tree
 
             end
     end;
@@ -297,3 +313,23 @@ temp_id() ->
             {_, _, C} = now(), 
             "temp" ++ integer_to_list(C)
     end.
+
+push(Key, Value) ->
+    case get(Key) of
+        undefined           -> put(Key,[Value]);
+        Vs when is_list(Vs) -> put(Key,[Value|Vs])
+    end.
+    
+
+%%% FIXME
+%%%
+%%% At the end of the document add:
+%%%
+%%% <script n:content="_/generate_scripts"/>
+%%%
+
+add_validators(#wire{what=What,validators=Vs}) ->
+    %% FIXME lookup the validator records and generate Javascript.
+    %%"v.add(Validate.Presence, { failureMessage: "Required." });;
+    %%{#xmlElement{} = Tree2, _} = xmerl_scan:string(Script),
+    "".
